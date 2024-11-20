@@ -7,7 +7,6 @@ from fpdf import FPDF
 # Função para carregar o arquivo CSV
 def load_data(file):
     try:
-        # Tenta carregar com delimitador padrão ';'
         data = pd.read_csv(
             file, 
             sep=';',  # Delimitador padrão
@@ -21,17 +20,6 @@ def load_data(file):
         st.error(f"Erro ao carregar o arquivo CSV: {e}")
         return None
 
-# Função para aplicar gradiente nas células (faixa hora por dia da semana)
-def apply_gradient(df):
-    styles = df.copy()
-    for col in df.columns:
-        max_val = df[col].max()
-        styles[col] = df[col].apply(
-            lambda x: f"background-color: rgba(255, {255 - int((x / max_val) * 255)}, {255 - int((x / max_val) * 255)}, 1)"
-            if pd.notna(x) else ""
-        )
-    return styles
-
 # Função para gerar o PDF
 def generate_pdf(data, title="CARTÃO PROGRAMA"):
     pdf = FPDF()
@@ -44,19 +32,27 @@ def generate_pdf(data, title="CARTÃO PROGRAMA"):
 
     # Adicionar tabela
     pdf.set_font("Arial", size=10)
-    col1_width = 80
-    col2_width = 100
+    col1_width = 80  # Largura da coluna "FAIXA HORA"
+    col2_width = 100  # Largura da coluna "LOGRADOURO"
+    col3_width = 100  # Largura da coluna "BAIRRO"
 
     pdf.cell(col1_width, 10, "FAIXA HORA", 1, 0, 'C')
-    pdf.cell(col2_width, 10, "LOGRADOUROS", 1, 1, 'C')
+    pdf.cell(col2_width, 10, "LOGRADOURO", 1, 0, 'C')
+    pdf.cell(col3_width, 10, "BAIRRO", 1, 1, 'C')
 
-    for row in data.itertuples():
-        pdf.cell(col1_width, 10, str(row.FAIXA_HORA_1), 1, 0, 'C')
-        pdf.cell(col2_width, 10, str(row.LOGRADOURO), 1, 1, 'C')
+    # Verificar os dados antes de iterar
+    if data.empty:
+        pdf.cell(0, 10, "Nenhum dado disponível para gerar o PDF.", 1, 1, 'C')
+    else:
+        for row in data.itertuples():
+            pdf.cell(col1_width, 10, str(row.FAIXA_HORA_1), 1, 0, 'C')
+            pdf.cell(col2_width, 10, str(row.LOGRADOURO), 1, 0, 'C')
+            pdf.cell(col3_width, 10, str(row.BAIRRO), 1, 1, 'C')
 
+    # Salvar o PDF como bytes
     pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
+    pdf_output.write(pdf.output(dest='S').encode('latin1'))  # Escreve o PDF no buffer
+    pdf_output.seek(0)  # Retorna ao início do buffer
     return pdf_output
 
 # Configuração do Streamlit
@@ -70,12 +66,11 @@ if uploaded_file:
     data = load_data(uploaded_file)
     
     if data is not None:
-        # Exibir colunas disponíveis
         st.write("Colunas disponíveis no CSV:")
         st.write(data.columns.tolist())
 
-        # Verificar se as colunas necessárias existem no CSV
-        required_columns = ["DESCR_NATUREZA_PRINCIPAL", "MUNICIPIO", "SETOR", "DIA_DA_SEMANA_FATO", "FAIXA_HORA_1", "TENTADO_CONSUMADO_PRINCIPAL"]
+        # Verificar colunas obrigatórias
+        required_columns = ["DESCR_NATUREZA_PRINCIPAL", "MUNICIPIO", "SETOR", "DIA_DA_SEMANA_FATO", "FAIXA_HORA_1", "LOGRADOURO", "BAIRRO"]
         missing_columns = [col for col in required_columns if col not in data.columns]
 
         if missing_columns:
@@ -95,63 +90,43 @@ if uploaded_file:
             ]
 
             # Exibir dados filtrados
-            st.subheader("Dados Filtrados")
-            st.dataframe(filtered_data)
+            if not filtered_data.empty:
+                st.subheader("Dados Filtrados")
+                st.dataframe(filtered_data)
 
-            # Gráfico 1: Quantidade de registros por dia da semana
-            st.subheader("Quantidade de Registros por Dia da Semana")
-            registros_por_dia = filtered_data["DIA_DA_SEMANA_FATO"].value_counts().sort_index()
-            fig1 = px.bar(
-                registros_por_dia,
-                x=registros_por_dia.index,
-                y=registros_por_dia.values,
-                title="Registros por Dia da Semana",
-                labels={"x": "Dia da Semana", "y": "Quantidade de Registros"}
-            )
-            st.plotly_chart(fig1)
+                # Gráfico 1: Quantidade de registros por dia da semana
+                st.subheader("Quantidade de Registros por Dia da Semana")
+                registros_por_dia = filtered_data["DIA_DA_SEMANA_FATO"].value_counts().sort_index()
 
-            # Gráfico 2: Faixa Hora 1 por Dia da Semana (com gradiente)
-            st.subheader("Quantidade (Faixa Hora 1) por Dia da Semana")
-            faixa_hora_pivot = (
-                filtered_data.pivot_table(
-                    index="DIA_DA_SEMANA_FATO",
-                    columns="FAIXA_HORA_1",
-                    aggfunc="size",
-                    fill_value=0
-                )
-            )
-            st.dataframe(faixa_hora_pivot.style.apply(apply_gradient, axis=None))
+                if not registros_por_dia.empty:
+                    fig1 = px.bar(
+                        registros_por_dia,
+                        x=registros_por_dia.index,
+                        y=registros_por_dia.values,
+                        title="Registros por Dia da Semana",
+                        labels={"x": "Dia da Semana", "y": "Quantidade de Registros"}
+                    )
+                    st.plotly_chart(fig1)
+                else:
+                    st.warning("Nenhum dado disponível para exibir no gráfico.")
 
-            # Gráfico 3: Pizza (Tentado x Consumado)
-            st.subheader("Tentado x Consumado")
-            tentado_consumado = filtered_data["TENTADO_CONSUMADO_PRINCIPAL"].value_counts()
-            fig3 = px.pie(
-                names=tentado_consumado.index,
-                values=tentado_consumado.values,
-                title="Tentado x Consumado"
-            )
-            st.plotly_chart(fig3)
-
-            # Botão para gerar PDF
-            st.sidebar.subheader("Gerar Relatório")
-            if st.sidebar.button("Baixar PDF"):
-                # Criar tabela para o PDF (ordenada por quantidade)
+                # Preparar dados para PDF
                 pdf_data = (
-                    filtered_data.groupby("FAIXA_HORA_1")["LOGRADOURO"]
-                    .count()
-                    .reset_index()
-                    .rename(columns={"LOGRADOURO": "Quantidade"})
-                    .sort_values(by="Quantidade", ascending=False)
+                    filtered_data[["FAIXA_HORA_1", "LOGRADOURO", "BAIRRO"]]  # Manter colunas necessárias
+                    .dropna()  # Remover linhas com valores ausentes
+                    .sort_values(by="FAIXA_HORA_1")  # Ordenar pela faixa horária
                 )
-                
+
                 # Gerar PDF
-                pdf_file = generate_pdf(pdf_data)
-                
-                # Botão para download
-                st.sidebar.success("PDF Gerado com Sucesso!")
-                st.sidebar.download_button(
-                    label="Baixar PDF",
-                    data=pdf_file,
-                    file_name="relatorio_ocorrencias.pdf",
-                    mime="application/pdf"
-                )
+                st.sidebar.subheader("Gerar Relatório")
+                if st.sidebar.button("Baixar PDF"):
+                    pdf_file = generate_pdf(pdf_data)
+                    st.sidebar.success("PDF Gerado com Sucesso!")
+                    st.sidebar.download_button(
+                        label="Baixar PDF",
+                        data=pdf_file,
+                        file_name="relatorio_ocorrencias.pdf",
+                        mime="application/pdf"
+                    )
+            else:
+                st.warning("Nenhum dado disponível após aplicar os filtros.")
