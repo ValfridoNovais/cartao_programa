@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Environment
+.env
+.cartao-programa
+cartao-programa
+*.env
+venv/
+env/
+.venv/
+
+# Streamlit
+# Diretório temporário gerado pelo Streamlit
+.streamlit/
+
+# IDEs e Configurações de Ferramentas
+.vscode/
+.idea/
+*.swp
+
+# Arquivos de Logs
+*.log
+
+# Arquivos de Sistema
+.DS_Store
+Thumbs.db
